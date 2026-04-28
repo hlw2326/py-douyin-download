@@ -48,19 +48,3 @@
 
 - 如有侵犯到您的知识产权、个人隐私等，请立即联系我们， 我们将积极配合保护您的权益。
 
-## 项目参考 (Refer)
-
-- <https://github.com/NearHuiwen/TiktokDouyinCrawler>
-- <https://github.com/JoeanAmier/TikTokDownloader>
-- <https://github.com/Johnserf-Seed/f2>
-- <https://github.com/Johnserf-Seed/TikTokDownload>
-- <https://github.com/Evil0ctal/Douyin_TikTok_Download_API>
-- <https://github.com/NearHuiwen/TiktokDouyinCrawler>
-- <https://github.com/ihmily/DouyinLiveRecorder>
-- <https://github.com/encode/httpx/>
-- <https://github.com/Textualize/rich>
-- <https://github.com/omnilib/aiosqlite>
-- <https://github.com/borisbabic/browser_cookie3>
-- <https://github.com/pyinstaller/pyinstaller>
-- <https://ffmpeg.org/ffmpeg-all.html>
-- <https://html5up.net/hyperspace>
