@@ -6,6 +6,8 @@ from .settings import (
     RETRY_ACCOUNT, RETRY_FILE,
     Colors,
     Account, Settings,
-    load_settings
+    load_settings,
+    save_max_video_duration,
+    get_settings_filepath
 )
 from .cookie import Cookie

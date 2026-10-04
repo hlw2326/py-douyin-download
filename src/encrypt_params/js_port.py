@@ -1,7 +1,7 @@
 from urllib import parse
 from py_mini_racer import MiniRacer
 
-from ..config import BUNDLE_ROOT, USER_AGENT
+from ..config.settings import BUNDLE_ROOT, USER_AGENT
 
 def get_a_bogus(query: dict):
     path = BUNDLE_ROOT / 'src/encrypt_params/a_bogus.js'

@@ -3,7 +3,7 @@ from json import dumps
 from rich import print
 
 from .general import send_post
-from ..config import USER_AGENT, Colors
+from ..config.settings import USER_AGENT, Colors
 
 
 class WebID:

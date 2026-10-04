@@ -5,7 +5,7 @@ from threading import Thread
 from pathlib import Path
 from json import dump
 
-from .config import Account, Settings, Cookie, Colors, PROJECT_ROOT, ENCODE
+from .config import Account, Settings, Cookie, Colors, PROJECT_ROOT, ENCODE, load_settings, save_max_video_duration
 from .download import Acquire, Download, Parse
 from .tool import Cleaner, resolve_user_url
 
@@ -85,15 +85,23 @@ class DouyinDownloaderGUI:
         ttk.Checkbutton(options_frame, text="下载视频", variable=self.download_videos).pack(side=tk.LEFT, padx=(0, 20))
         ttk.Checkbutton(options_frame, text="下载图集", variable=self.download_images).pack(side=tk.LEFT, padx=(0, 20))
 
-        # 时长上限
-        self.limit_duration = tk.BooleanVar(value=True)
-        self.duration_seconds = tk.StringVar(value="20")
+        # 时长上限（默认 36 秒，支持从配置读取并写入配置）
+        default_duration = 36
+        try:
+            cfg = load_settings()
+            if cfg.max_video_duration is not None:
+                default_duration = cfg.max_video_duration
+        except Exception:
+            pass
+        self.limit_duration = tk.BooleanVar(value=(default_duration > 0))
+        self.duration_seconds = tk.StringVar(value=str(default_duration if default_duration > 0 else 36))
         ttk.Checkbutton(options_frame, text="跳过超过", variable=self.limit_duration).pack(side=tk.LEFT)
         self.duration_entry = ttk.Spinbox(
             options_frame, from_=1, to=3600, width=5,
             textvariable=self.duration_seconds)
         self.duration_entry.pack(side=tk.LEFT, padx=(5, 5))
         ttk.Label(options_frame, text="秒的视频").pack(side=tk.LEFT)
+        ttk.Button(options_frame, text="保存时长配置", command=self._save_duration_config).pack(side=tk.LEFT, padx=(10, 0))
         row += 1
 
         # 保存文件夹
@@ -126,16 +134,18 @@ class DouyinDownloaderGUI:
             row=row, column=0, columnspan=3, pady=(5, 0))
 
     def _load_existing_cookie(self):
-        cookie_path = self.cookie.cookie_path
-        if cookie_path.exists():
-            try:
-                self.cookie.load_cookies()
-                cookie_str = self.cookie._generate_str()
-                self.cookie_text.delete(1.0, tk.END)
-                self.cookie_text.insert(1.0, cookie_str)
-                self._log("已加载已保存的 Cookie")
-            except Exception as e:
-                self._log(f"加载 Cookie 失败: {e}")
+        try:
+            self.cookie.load_cookies()
+            cookie_str = self.cookie._generate_str()
+            self.cookie_text.delete(1.0, tk.END)
+            self.cookie_text.insert(1.0, cookie_str)
+            self._log("已加载已保存的 Cookie", 'green')
+            if self.cookie.has_uifid():
+                self._log("✓ 检测到 UIFID 风控校验参数", 'green')
+            else:
+                self._log("⚠️ 提示：当前 Cookie 缺少 UIFID 字段，若遇 ArgusSecurityPlugin 拦截请重新从浏览器网络请求中复制", 'yellow')
+        except Exception as e:
+            self._log(f"加载 Cookie 失败: {e}", 'red')
 
     def _save_cookie(self):
         cookie_str = self.cookie_text.get(1.0, tk.END).strip()
@@ -146,9 +156,34 @@ class DouyinDownloaderGUI:
             self.cookie.cookies = self.cookie._generate_dict(cookie_str)
             self.cookie._check()
             self.cookie._save_json()
-            messagebox.showinfo("成功", "Cookie 保存成功！")
+            if self.cookie.has_uifid():
+                messagebox.showinfo("成功", "Cookie 保存成功！（已检测到 UIFID 风控参数）")
+                self._log("Cookie 保存成功！(包含 UIFID)", 'green')
+            else:
+                messagebox.showwarning(
+                    "提示",
+                    "Cookie 保存成功！\n\n"
+                    "⚠️ 注意：未检测到 UIFID 字段。\n"
+                    "抖音已启用 ArgusSecurityPlugin 风控校验，缺少 UIFID 可能会导致接口返回 403 拦截。\n"
+                    "如遇拦截，请在浏览器 F12 打开网络面板刷新页面，复制任意 /aweme/ 接口的完整 Cookie！"
+                )
+                self._log("⚠️ 提示：保存的 Cookie 中缺少 UIFID 字段", 'yellow')
         except Exception as e:
             messagebox.showerror("错误", f"保存 Cookie 失败: {e}")
+
+    def _save_duration_config(self):
+        '''将跳过视频时长配置写入配置文件'''
+        try:
+            val = int(self.duration_seconds.get().strip() or 36)
+            if not self.limit_duration.get():
+                val = 0
+            if save_max_video_duration(val):
+                messagebox.showinfo("成功", f"跳过视频时长配置已写入配置文件: {val} 秒！")
+                self._log(f"已写入配置文件：跳过超过 {val} 秒的视频 (0表示不限制)", 'green')
+            else:
+                messagebox.showerror("错误", "写入配置文件失败！")
+        except ValueError:
+            messagebox.showwarning("警告", "请输入有效的整数秒！")
 
     def _clear_cookie(self):
         self.cookie_text.delete(1.0, tk.END)
@@ -237,12 +272,15 @@ class DouyinDownloaderGUI:
         max_duration = 0
         if self.limit_duration.get():
             try:
-                max_duration = int(self.duration_seconds.get().strip() or 0)
+                max_duration = int(self.duration_seconds.get().strip() or 36)
                 if max_duration < 0:
                     max_duration = 0
             except ValueError:
                 messagebox.showwarning("警告", "时长上限必须是整数秒")
                 return None
+
+        # 自动将时长配置写入配置文件
+        save_max_video_duration(max_duration)
 
         settings = Settings(
             accounts=(account,),
@@ -284,7 +322,7 @@ class DouyinDownloaderGUI:
             self.cookie.update()
             self._log("\n使用逐页下载模式", 'blue')
 
-            acquire = Acquire()
+            acquire = Acquire(logger=self._log)
             account_extracted = False
             total_downloaded = 0
             next_video_num = 1  # 下一个视频序号

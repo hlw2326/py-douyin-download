@@ -4,7 +4,7 @@ from requests import (
 )
 from rich import print
 
-from ..config import USER_AGENT, Colors
+from ..config.settings import USER_AGENT, Colors
 from ..tool import retry
 
 

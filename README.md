@@ -38,6 +38,7 @@
 | name_format     | 下载的视频命名格式（可选项：create_time(视频发布日期) id(视频 id) type(图集/视频) desc(视频描述文本) | "name_format": [ "create_time", "id" ] |
 | split           | 上述 “name_format” 不同项间的间隔符（默认为 “-”）                                                    | "split": "-" |
 | date_format     | 上述 “name_format” 中日期格式（默认为 “%Y-%m-%d”(年月日)）                                           | "date_format", "%Y-%m-%d" |
+| max_video_duration | 视频时长上限（秒），跳过超过该秒数的视频（默认 36 秒，设置为 0 表示不限制）                               | "max_video_duration": 36 |
 | proxy  | 网络代理（若使用 clash 的 Tun 模式，就需要这个参数）| "proxy": "<http://127.0.0.1:7897>" |
 
 ## 免责声明 (Disclaimer)

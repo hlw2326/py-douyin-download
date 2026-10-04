@@ -1,122 +1,120 @@
-from re import finditer
-from rich import print
 from json import load, dump
 from pathlib import Path
 from os import getenv
+from rich import print
 
-from .settings import Colors, ENCODE
-from ..encrypt_params import MsToken, TtWid
+from .settings import Colors, ENCODE, PROJECT_ROOT
 
 
 class Cookie:
     def __init__(self):
         self.cookies = {}
-        # Cookie 保存到用户目录
-        username = getenv('USERNAME')
-        self.cookie_path = Path(f'C:/Users/{username}/cookies.json')
+        # 优先读取项目根目录下的 cookies.json，否则读取用户家目录
+        self.local_cookie_path = PROJECT_ROOT / 'cookies.json'
+        username = getenv('USERNAME') or 'Administrator'
+        self.user_cookie_path = Path(f'C:/Users/{username}/cookies.json')
+        if self.local_cookie_path.exists():
+            self.cookie_path = self.local_cookie_path
+        else:
+            self.cookie_path = self.user_cookie_path
 
     def load_cookies(self):
-        with open(self.cookie_path, 'r', encoding=ENCODE) as f:
+        # 优先从存在的文件读取
+        target_path = self.cookie_path
+        if not target_path.exists():
+            if self.local_cookie_path.exists():
+                target_path = self.local_cookie_path
+            elif self.user_cookie_path.exists():
+                target_path = self.user_cookie_path
+        
+        with open(target_path, 'r', encoding=ENCODE) as f:
             self.cookies = load(f)
+        self.cookie_path = target_path
 
     @staticmethod
     def _generate_dict(cookie: str) -> dict:
-        cookies_key = {
-            'passport_csrf_token',
-            'passport_csrf_token_default',
-            'my_rd',
-            'passport_auth_status',
-            'passport_auth_status_ss',
-            'd_ticket',
-            'publish_badge_show_info',
-            'volume_info',
-            '__live_version__',
-            'download_guide',
-            'EnhanceDownloadGuide',
-            'pwa2',
-            'live_can_add_dy_2_desktop',
-            'live_use_vvc',
-            'store-region',
-            'store-region-src',
-            'strategyABtestKey',
-            'FORCE_LOGIN',
-            'LOGIN_STATUS',
-            '__security_server_data_status',
-            '_bd_ticket_crypt_doamin',
-            'n_mh',
-            'passport_assist_user',
-            'sid_ucp_sso_v1',
-            'ssid_ucp_sso_v1',
-            'sso_uid_tt',
-            'sso_uid_tt_ss',
-            'toutiao_sso_user',
-            'toutiao_sso_user_ss',
-            'sessionid',
-            'sessionid_ss',
-            'sid_guard',
-            'sid_tt',
-            'sid_ucp_v1',
-            'ssid_ucp_v1',
-            'uid_tt',
-            'uid_tt_ss',
-            'FOLLOW_NUMBER_YELLOW_POINT_INFO',
-            'vdg_s',
-            '_bd_ticket_crypt_cookie',
-            'FOLLOW_LIVE_POINT_INFO',
-            'bd_ticket_guard_client_data',
-            'bd_ticket_guard_client_web_domain',
-            'home_can_add_dy_2_desktop',
-            'odin_tt',
-            'stream_recommend_feed_params',
-            'IsDouyinActive',
-            'stream_player_status_params',
-            's_v_web_id',
-            '__ac_nonce',
-            'dy_sheight',
-            'dy_swidth',
-            'ttcid',
-            'xgplayer_user_id',
-            '__ac_signature',
-            'tt_scid'
-        }
-        cookies = {}.fromkeys(cookies_key)
-        matches = finditer(r'(?P<key>[^=;,]+)=(?P<value>[^;,]+)', cookie)
-        for match in matches:
-            key = match.group('key').strip()
-            value = match.group('value').strip()
-            if key in cookies_key:
+        '''解析浏览器 Cookie 字符串，保留所有有效键值对（避免遗漏 UIFID 等新风控参数）'''
+        cookies = {}
+        for item in cookie.split(';'):
+            item = item.strip()
+            if not item or '=' not in item:
+                continue
+            key, value = item.split('=', 1)
+            key = key.strip()
+            value = value.strip()
+            if key:
                 cookies[key] = value
         return cookies
 
-    def _check(self) -> None:
-        if not self.cookies['sessionid_ss']:
-            print(f'[{Colors.CYAN}]当前 Cookie 未登录')
-        else:
-            print(f'[{Colors.CYAN}]当前 Cookie 已登录')
+    def get_uifid(self) -> str | None:
+        '''获取 UIFID 风控参数'''
+        for k in ('UIFID', 'uifid', 'UIFID_TEMP'):
+            if val := self.cookies.get(k):
+                return val
+        for k, v in self.cookies.items():
+            if k.lower() == 'uifid' and v:
+                return v
+        return None
 
-        keys_to_remove = [key for key, value in self.cookies.items() if value is None]
-        for key in keys_to_remove:
-            del self.cookies[key]
+    def has_uifid(self) -> bool:
+        return self.get_uifid() is not None
+
+    def get_verify_fp(self) -> str | None:
+        '''获取 verifyFp / fp 风控参数'''
+        return (
+            self.cookies.get('s_v_web_id')
+            or self.cookies.get('verifyFp')
+            or self.cookies.get('fp')
+        )
+
+    def _check(self) -> None:
+        if not self.cookies.get('sessionid_ss') and not self.cookies.get('sessionid'):
+            print(f'[{Colors.YELLOW}]⚠️ 当前 Cookie 未检测到登录状态 (缺少 sessionid/sessionid_ss)')
+        else:
+            print(f'[{Colors.GREEN}]✓ 当前 Cookie 已处于登录状态')
+
+        if not self.has_uifid():
+            print(f'[{Colors.YELLOW}]⚠️ 警告：Cookie 中未检测到 UIFID 字段！')
+            print(f'[{Colors.YELLOW}]抖音已启用 ArgusSecurityPlugin 校验，缺少 UIFID 会导致接口返回 403 (Blocked by ArgusSecurityPlugin Uifid Not Found)。')
+            print(f'[{Colors.YELLOW}]建议：在浏览器打开 www.douyin.com 并登录，按 F12 打开网络 (Network) 面板刷新页面，在任意 /aweme/ 请求的 Headers 中复制完整的 Cookie。')
+        else:
+            print(f'[{Colors.GREEN}]✓ 已包含 UIFID 风控校验参数')
 
     def _save_json(self) -> None:
-        # 确保目录存在
-        self.cookie_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(self.cookie_path, 'w', encoding=ENCODE) as f:
-            dump(self.cookies, f, ensure_ascii=False, indent=4)
-        print(f'[{Colors.GREEN}]写入 Cookie 成功！')
+        # 保存到当前路径，并同步保存到项目目录（如果存在）
+        paths = {self.cookie_path, self.local_cookie_path, self.user_cookie_path}
+        saved = False
+        for p in paths:
+            try:
+                p.parent.mkdir(parents=True, exist_ok=True)
+                with open(p, 'w', encoding=ENCODE) as f:
+                    dump(self.cookies, f, ensure_ascii=False, indent=4)
+                saved = True
+            except Exception:
+                pass
+        if saved:
+            print(f'[{Colors.GREEN}]写入 Cookie 成功！')
+        else:
+            print(f'[{Colors.RED}]保存 Cookie 失败，请检查文件写入权限！')
 
     def input_save(self) -> None:
-        while not (cookie := input(f'请粘贴 Cookie 内容: ')):
+        while not (cookie := input('请粘贴 Cookie 内容: ')):
             continue
         self.cookies = self._generate_dict(cookie)
         self._check()
         self._save_json()
 
     def update(self) -> None:
-        parameters = (MsToken.get_real_ms_token(), TtWid.get_tt_wid())
-        for i in parameters:
-            if isinstance(i, dict):
-                self.cookies |= i
+        '''动态刷新 msToken 和 ttwid'''
+        try:
+            from ..encrypt_params.msToken import MsToken
+            from ..encrypt_params.ttWid import TtWid
+            parameters = (MsToken.get_real_ms_token(), TtWid.get_tt_wid())
+            for i in parameters:
+                if isinstance(i, dict):
+                    self.cookies |= i
+        except Exception as e:
+            print(f'[{Colors.YELLOW}]刷新动态参数失败 (非致命): {e}')
 
     def _generate_str(self) -> str:
         result = [f'{k}={v}' for k, v in self.cookies.items()]
